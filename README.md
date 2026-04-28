@@ -134,8 +134,6 @@ Each transcript shows:
 ├── transcripts/                     ← Part B: Sample runs
 │   ├── persona-1-transcript.md      (victim path)
 │   └── persona-2-transcript.md      (victor path)
-├── write-up.md                      ← Part A: Design rationale (2.5 pages)
-├── DailyReflectionTree.md           ← Assignment brief (reference)
 └── README.md                        ← This file
 ```
 

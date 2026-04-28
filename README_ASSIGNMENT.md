@@ -44,8 +44,6 @@ A visual Mermaid flowchart showing the complete branching structure. The diagram
 This diagram is readable without running code—it's data you can trace by eye.
 
 ### 3. Design Write-Up
-**File:** [`write-up.md`](write-up.md)  
-**Length:** ~150 lines (~2.5 pages)
 
 Covers the four required sections:
 

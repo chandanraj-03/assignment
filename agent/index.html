@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Daily Reflection Tree — An end-of-day reflection tool guiding you through three psychological axes to build self-awareness.">
+  <title>Daily Reflection Tree</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+</head>
+<body data-theme="light">
+  <div id="app">
+    <header class="header">
+      <div class="header-top">
+        <div>
+          <h1>Daily Reflection Tree</h1>
+          <p class="subtitle">End-of-day reflection · No AI at runtime</p>
+        </div>
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark/light mode">
+          <svg class="theme-icon light-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="theme-icon dark-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="progress-container" id="progressContainer" style="display:none;">
+      <div class="progress-details">
+        <div class="progress-info">
+          <span class="progress-axis" id="progressAxis">Opening</span>
+          <span class="progress-pct" id="progressPct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill" style="width:0%"></div>
+        </div>
+      </div>
+      
+      <div class="axis-indicators" id="axisIndicators">
+        <div class="axis-indicator" data-axis="axis1">
+          <span class="axis-label">Locus</span>
+          <div class="axis-bar"><div class="axis-progress"></div></div>
+        </div>
+        <div class="axis-indicator" data-axis="axis2">
+          <span class="axis-label">Contribution</span>
+          <div class="axis-bar"><div class="axis-progress"></div></div>
+        </div>
+        <div class="axis-indicator" data-axis="axis3">
+          <span class="axis-label">Radius</span>
+          <div class="axis-bar"><div class="axis-progress"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="node-container" id="nodeContainer">
+      <div class="loading">
+        <div class="loading-spinner"></div>
+        <span class="loading-text">Loading reflection tree…</span>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div class="footer-content">
+        <div class="footer-text">Deterministic · No LLM at runtime</div>
+        <button class="footer-btn" id="historyBtn" title="View session history">📊 History</button>
+        <div class="footer-version">v1.0</div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Modal for answer review -->
+  <div class="modal" id="answerReviewModal" style="display:none;">
+    <div class="modal-content">
+      <button class="modal-close" id="closeReviewModal">&times;</button>
+      <h2>Your Session Summary</h2>
+      <div id="answerReviewBody"></div>
+      <button class="btn btn-primary" id="confirmReviewBtn">Continue to Reflection</button>
+    </div>
+  </div>
+
+  <!-- Modal for session history -->
+  <div class="modal" id="sessionHistoryModal" style="display:none;">
+    <div class="modal-content modal-large">
+      <button class="modal-close" id="closeHistoryModal">&times;</button>
+      <h2>📊 Session History</h2>
+      <div id="sessionHistoryBody"></div>
+    </div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script>
+    let engine = null;
+
+    // ────── THEME TOGGLE ──────
+    function initTheme() {
+      const savedTheme = localStorage.getItem('reflection-theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      updateThemeIcon(savedTheme);
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const currentTheme = html.getAttribute('data-theme');
+      const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+      html.setAttribute('data-theme', newTheme);
+      localStorage.setItem('reflection-theme', newTheme);
+      updateThemeIcon(newTheme);
+    }
+
+    function updateThemeIcon(theme) {
+      const lightIcon = document.querySelector('.light-icon');
+      const darkIcon = document.querySelector('.dark-icon');
+      if (theme === 'light') {
+        lightIcon?.classList.add('active');
+        darkIcon?.classList.remove('active');
+      } else {
+        lightIcon?.classList.remove('active');
+        darkIcon?.classList.add('active');
+      }
+    }
+
+    document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
+    initTheme();
+
+    // ────── SESSION MANAGEMENT ──────
+    async function init() {
+      try {
+        const res = await fetch('../tree/reflection-tree.json');
+        const data = await res.json();
+        engine = new ReflectionEngine(data);
+        const startNode = engine.start();
+        showStartNode(startNode);
+      } catch (err) {
+        document.getElementById('nodeContainer').innerHTML =
+          '<div class="loading"><span class="loading-text">Error loading tree: ' + err.message + '</span></div>';
+      }
+    }
+
+    function updateProgress() {
+      const container = document.getElementById('progressContainer');
+      container.style.display = 'block';
+      const pct = Math.round(engine.getProgress() * 100);
+      document.getElementById('progressFill').style.width = pct + '%';
+      document.getElementById('progressPct').textContent = pct + '%';
+      document.getElementById('progressAxis').textContent = engine.getCurrentAxisLabel();
+      
+      // Update axis indicators
+      updateAxisIndicators();
+    }
+
+    function updateAxisIndicators() {
+      const state = engine.getSessionState();
+      const indicators = document.querySelectorAll('.axis-indicator');
+      indicators.forEach(indicator => {
+        const axis = indicator.dataset.axis;
+        const signals = state.signals[axis];
+        if (signals) {
+          const total = signals.internal + signals.external || signals.contribution + signals.entitlement || signals.self + signals.others || 1;
+          const dominant = state.dominants[axis];
+          const dominantValue = signals[dominant] || 0;
+          const pct = (dominantValue / total) * 100;
+          indicator.querySelector('.axis-progress').style.width = pct + '%';
+          indicator.classList.add('active');
+        }
+      });
+    }
+
+    function showStartNode(node) {
+      updateProgress();
+      const container = document.getElementById('nodeContainer');
+      container.innerHTML = '';
+
+      const card = document.createElement('div');
+      card.className = 'node-card welcome-card';
+      card.innerHTML = `
+        <span class="node-type-badge">Welcome</span>
+        <p class="node-text">${formatText(node.text)}</p>
+        <div class="info-boxes">
+          <div class="info-box">
+            <div class="info-icon">🎯</div>
+            <div><strong>3 Axes</strong><br>Agency, Contribution, Perspective</div>
+          </div>
+          <div class="info-box">
+            <div class="info-icon">⏱️</div>
+            <div><strong>8-12 Questions</strong><br>Adaptive path based on your answers</div>
+          </div>
+          <div class="info-box">
+            <div class="info-icon">✨</div>
+            <div><strong>Personalized</strong><br>Reflection crafted just for you</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="startBtn">
+          Begin Your Reflection <span class="arrow">→</span>
+        </button>
+      `;
+      container.appendChild(card);
+
+      card.querySelector('#startBtn').addEventListener('click', () => {
+        transitionTo(() => {
+          const next = engine.continue();
+          if (next) renderNode(next);
+        });
+      });
+    }
+
+    function renderNode(node) {
+      updateProgress();
+      const container = document.getElementById('nodeContainer');
+      container.innerHTML = '';
+
+      if (node.type === 'question') renderQuestion(node, container);
+      else if (node.type === 'reflection') renderReflection(node, container);
+      else if (node.type === 'bridge') renderBridge(node, container);
+      else if (node.type === 'summary') renderSummary(node, container);
+      else if (node.type === 'end') renderEnd(node, container);
+      else {
+        const next = engine.continue();
+        if (next) renderNode(next);
+      }
+    }
+
+    function renderQuestion(node, container) {
+      const card = document.createElement('div');
+      card.className = 'node-card question-card';
+      let selectedAnswer = null;
+      let selectedConfidence = 100;
+
+      let optionsHtml = '<div class="options-list">';
+      node.options.forEach((opt, i) => {
+        optionsHtml += `<button class="option-btn" data-index="${i}" id="opt-${i}">${opt}</button>`;
+      });
+      optionsHtml += '</div>';
+
+      card.innerHTML = `
+        <span class="node-type-badge">Question</span>
+        <p class="node-text">${formatText(node.text)}</p>
+        ${optionsHtml}
+        <div class="confidence-section" style="display:none;">
+          <label for="confidenceSlider">How confident are you in this answer?</label>
+          <div class="confidence-slider-group">
+            <input type="range" id="confidenceSlider" class="confidence-slider" min="0" max="100" value="100">
+            <span class="confidence-value" id="confidenceValue">100%</span>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+
+      const confidenceSection = card.querySelector('.confidence-section');
+      const confidenceSlider = card.querySelector('#confidenceSlider');
+      const confidenceValue = card.querySelector('#confidenceValue');
+
+      confidenceSlider?.addEventListener('input', (e) => {
+        selectedConfidence = parseInt(e.target.value);
+        confidenceValue.textContent = selectedConfidence + '%';
+      });
+
+      card.querySelectorAll('.option-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedAnswer = btn.textContent;
+          card.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          confidenceSection.style.display = 'block';
+          confidenceSlider?.focus();
+        });
+      });
+
+      // Allow immediate submission if clicking an option again (to submit)
+      setTimeout(() => {
+        card.querySelectorAll('.option-btn').forEach(btn => {
+          const originalClick = btn.onclick;
+          btn.addEventListener('dblclick', () => {
+            if (selectedAnswer) {
+              transitionTo(() => {
+                const next = engine.submitAnswer(selectedAnswer, selectedConfidence);
+                if (next) renderNode(next);
+              });
+            }
+          });
+        });
+      }, 0);
+
+      // Submit on Enter key
+      const handleKeyPress = (e) => {
+        if (e.key === 'Enter' && selectedAnswer) {
+          document.removeEventListener('keypress', handleKeyPress);
+          transitionTo(() => {
+            const next = engine.submitAnswer(selectedAnswer, selectedConfidence);
+            if (next) renderNode(next);
+          });
+        }
+      };
+      document.addEventListener('keypress', handleKeyPress);
+
+      // Auto-submit after slider interaction (2 second delay for better UX)
+      let submitTimer = null;
+      confidenceSlider?.addEventListener('change', () => {
+        if (selectedAnswer) {
+          clearTimeout(submitTimer);
+          submitTimer = setTimeout(() => {
+            document.removeEventListener('keypress', handleKeyPress);
+            transitionTo(() => {
+              const next = engine.submitAnswer(selectedAnswer, selectedConfidence);
+              if (next) renderNode(next);
+            });
+          }, 1000);
+        }
+      });
+    }
+
+    function renderReflection(node, container) {
+      const card = document.createElement('div');
+      card.className = 'node-card reflection-card';
+      card.innerHTML = `
+        <span class="node-type-badge reflection">Insight</span>
+        <p class="node-text">${formatText(node.text)}</p>
+        <button class="btn btn-secondary" id="continueBtn">
+          Continue <span class="arrow">→</span>
+        </button>
+      `;
+      container.appendChild(card);
+
+      card.querySelector('#continueBtn').addEventListener('click', () => {
+        transitionTo(() => {
+          const next = engine.continue();
+          if (next) renderNode(next);
+        });
+      });
+    }
+
+    function renderBridge(node, container) {
+      const card = document.createElement('div');
+      card.className = 'node-card bridge-card';
+      card.innerHTML = `
+        <span class="node-type-badge bridge">Transition</span>
+        <p class="node-text">${formatText(node.text)}</p>
+      `;
+      container.appendChild(card);
+
+      setTimeout(() => {
+        transitionTo(() => {
+          const next = engine.continue();
+          if (next) renderNode(next);
+        });
+      }, 2200);
+    }
+
+    function renderSummary(node, container) {
+      const card = document.createElement('div');
+      card.className = 'node-card summary-card';
+
+      const state = engine.getSessionState();
+      const axisLabels = {
+        axis1: { name: 'Agency & Locus', emoji: '🎯' },
+        axis2: { name: 'Contribution & Orientation', emoji: '💪' },
+        axis3: { name: 'Radius of Concern', emoji: '🌍' }
+      };
+
+      let signalsHtml = '<div class="signals-grid">';
+      for (const [axis, info] of Object.entries(axisLabels)) {
+        const signals = state.signals[axis];
+        const dom = state.dominants[axis];
+        const total = Object.values(signals).reduce((a, b) => a + b, 0);
+        
+        signalsHtml += `<div class="signal-card axis-${axis}">
+          <div class="signal-header">
+            <span class="signal-emoji">${info.emoji}</span>
+            <span class="signal-name">${info.name}</span>
+          </div>
+          <div class="signal-value">${dom}</div>
+          <div class="signal-bar">
+            <div class="signal-bar-fill" style="width:${(state.signals[axis][dom] / total) * 100}%"></div>
+          </div>
+          <div class="signal-details">
+            ${Object.entries(signals).map(([k, v]) => 
+              `<span class="detail ${k === dom ? 'dominant' : ''}">${k}: ${v}</span>`
+            ).join('')}
+          </div>
+        </div>`;
+      }
+      signalsHtml += '</div>';
+
+      card.innerHTML = `
+        <span class="node-type-badge summary">Your Reflection</span>
+        <div class="node-text">${formatText(node.text)}</div>
+        ${signalsHtml}
+        <div class="summary-actions">
+          <button class="btn btn-secondary" id="reviewBtn">Review Answers</button>
+          <button class="btn btn-primary" id="finishBtn">
+            Finish <span class="arrow">→</span>
+          </button>
+        </div>
+      `;
+      container.appendChild(card);
+
+      card.querySelector('#reviewBtn')?.addEventListener('click', () => {
+        showAnswerReview(state);
+      });
+
+      card.querySelector('#finishBtn').addEventListener('click', () => {
+        transitionTo(() => {
+          const next = engine.continue();
+          if (next) renderNode(next);
+        });
+      });
+    }
+
+    function showAnswerReview(state) {
+      const modal = document.getElementById('answerReviewModal');
+      const body = document.getElementById('answerReviewBody');
+      
+      let reviewHtml = '<div class="answer-review">';
+      const allAnswers = state.answers;
+      const answerEntries = Object.entries(allAnswers);
+      
+      if (answerEntries.length > 0) {
+        reviewHtml += '<div class="answers-list">';
+        answerEntries.forEach(([nodeId, answer]) => {
+          const confidence = state.confidences[nodeId] !== undefined 
+            ? Math.round(state.confidences[nodeId] * 100)
+            : 100;
+          reviewHtml += `<div class="answer-item">
+            <div class="answer-header">
+              <span class="answer-id">${nodeId}</span>
+              <span class="answer-confidence">${confidence}% confident</span>
+            </div>
+            <span class="answer-value">${answer}</span>
+          </div>`;
+        });
+        reviewHtml += '</div>';
+      }
+      
+      const avgConfidence = state.confidences ? 
+        Math.round(Object.values(state.confidences).reduce((a, b) => a + b, 0) / Object.keys(state.confidences).length * 100)
+        : 100;
+
+      reviewHtml += `<div class="review-stats">
+        <div class="stat"><strong>${answerEntries.length}</strong> Questions Answered</div>
+        <div class="stat"><strong>${avgConfidence}%</strong> Avg Confidence</div>
+      </div></div>`;
+      
+      body.innerHTML = reviewHtml;
+      modal.style.display = 'block';
+
+      document.getElementById('closeReviewModal').addEventListener('click', () => {
+        modal.style.display = 'none';
+      });
+
+      document.getElementById('confirmReviewBtn').addEventListener('click', () => {
+        modal.style.display = 'none';
+      });
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+      });
+    }
+
+    function renderEnd(node, container) {
+      const state = engine.getSessionState();
+      
+      // Save session to localStorage
+      engine.saveSession();
+
+      const card = document.createElement('div');
+      card.className = 'node-card end-card';
+      card.innerHTML = `
+        <span class="node-type-badge">Complete</span>
+        <p class="node-text">${formatText(node.text)}</p>
+        
+        <div class="radar-container">
+          <canvas id="radarChart" width="300" height="300"></canvas>
+        </div>
+
+        <div class="end-actions">
+          <button class="btn btn-secondary" id="exportBtn">📥 Export Summary</button>
+          <button class="btn btn-primary" id="restartBtn">✨ New Session</button>
+        </div>
+      `;
+      container.appendChild(card);
+
+      // Draw radar chart
+      setTimeout(() => {
+        drawRadarChart(state);
+      }, 100);
+
+      card.querySelector('#exportBtn').addEventListener('click', () => {
+        exportSession(state);
+      });
+
+      card.querySelector('#restartBtn').addEventListener('click', () => {
+        location.reload();
+      });
+    }
+
+    function drawRadarChart(state) {
+      const canvas = document.getElementById('radarChart');
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      const strengths = state.signalStrengths;
+
+      const chart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels: ['Locus', 'Contribution', 'Radius'],
+          datasets: [{
+            label: 'Signal Strength',
+            data: [strengths.axis1, strengths.axis2, strengths.axis3],
+            borderColor: 'var(--accent-purple)',
+            backgroundColor: 'rgba(99, 102, 241, 0.15)',
+            borderWidth: 2,
+            pointBackgroundColor: 'var(--accent-purple)',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 5,
+            pointHoverRadius: 7
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          scales: {
+            r: {
+              beginAtZero: true,
+              max: 100,
+              ticks: { stepSize: 20 },
+              grid: { color: 'rgba(99, 102, 241, 0.1)' }
+            }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    function exportSession(state) {
+      const axisLabels = {
+        axis1: 'Agency & Locus of Control',
+        axis2: 'Contribution & Orientation',
+        axis3: 'Radius of Concern'
+      };
+
+      let content = '=== Daily Reflection Summary ===\n\n';
+      content += 'Date: ' + new Date().toLocaleString() + '\n';
+      content += 'Duration: ' + Math.round(state.durationMs / 1000) + ' seconds\n\n';
+      
+      content += '--- Your Answers ---\n';
+      Object.entries(state.answers).forEach(([id, answer]) => {
+        const confidence = state.confidences[id] !== undefined 
+          ? Math.round(state.confidences[id] * 100)
+          : 100;
+        content += `${id}: ${answer} (${confidence}% confident)\n`;
+      });
+
+      content += '\n--- Signal Strength ---\n';
+      content += `Locus: ${state.signalStrengths.axis1}%\n`;
+      content += `Contribution: ${state.signalStrengths.axis2}%\n`;
+      content += `Radius: ${state.signalStrengths.axis3}%\n`;
+
+      content += '\n--- Dominant Poles ---\n';
+      for (const [axis, label] of Object.entries(axisLabels)) {
+        const signals = state.signals[axis];
+        const total = Object.values(signals).reduce((a, b) => a + b, 0);
+        content += `${label}: ${state.dominants[axis]} (${Object.entries(signals).map(([k, v]) => `${k}: ${Math.round(v)}`).join(', ')})\n`;
+      }
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reflection-${new Date().toISOString().split('T')[0]}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function formatText(text) {
+      if (!text) return '';
+      return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/🔹/g, '<span class="bullet">🔹</span>')
+        .replace(/\n/g, '<br>');
+    }
+
+    function transitionTo(callback) {
+      const container = document.getElementById('nodeContainer');
+      const card = container.querySelector('.node-card');
+      if (card) {
+        card.classList.add('exiting');
+        setTimeout(() => { callback(); }, 300);
+      } else {
+        callback();
+      }
+    }
+
+    // ────── SESSION HISTORY ──────
+    function showSessionHistory() {
+      const modal = document.getElementById('sessionHistoryModal');
+      const body = document.getElementById('sessionHistoryBody');
+      const sessions = ReflectionEngine.getSessions();
+
+      if (sessions.length === 0) {
+        body.innerHTML = '<p class="no-sessions">No session history yet. Complete a session to see your progress!</p>';
+      } else {
+        let html = '<div class="history-container">';
+        html += `<p class="history-count">📈 ${sessions.length} session${sessions.length !== 1 ? 's' : ''} recorded</p>`;
+        html += '<div class="sessions-list">';
+
+        sessions.forEach((session, idx) => {
+          const date = new Date(session.timestamp);
+          const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+          const duration = Math.round(session.durationMs / 1000);
+
+          html += `<div class="session-item">
+            <div class="session-header">
+              <span class="session-date">Session ${sessions.length - idx} · ${dateStr}</span>
+              <span class="session-duration">⏱️ ${duration}s</span>
+            </div>
+            <div class="session-stats">
+              <div class="stat-mini">
+                <span class="stat-label">Locus</span>
+                <span class="stat-value">${session.dominants.axis1}</span>
+                <div class="strength-bar"><div style="width:${session.signalStrengths.axis1}%"></div></div>
+              </div>
+              <div class="stat-mini">
+                <span class="stat-label">Contribution</span>
+                <span class="stat-value">${session.dominants.axis2}</span>
+                <div class="strength-bar"><div style="width:${session.signalStrengths.axis2}%"></div></div>
+              </div>
+              <div class="stat-mini">
+                <span class="stat-label">Radius</span>
+                <span class="stat-value">${session.dominants.axis3}</span>
+                <div class="strength-bar"><div style="width:${session.signalStrengths.axis3}%"></div></div>
+              </div>
+            </div>
+            <button class="btn-session-detail" onclick="showSessionDetail(${idx})">View Details</button>
+          </div>`;
+        });
+
+        html += '</div></div>';
+        
+        // Add clear history button
+        html += `<div class="history-actions">
+          <button class="btn btn-secondary" onclick="clearSessionHistory()">🗑️ Clear All Sessions</button>
+        </div>`;
+
+        body.innerHTML = html;
+      }
+
+      modal.style.display = 'block';
+
+      const closeBtn = document.getElementById('closeHistoryModal');
+      closeBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+      });
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+      });
+    }
+
+    function showSessionDetail(sessionIdx) {
+      const sessions = ReflectionEngine.getSessions();
+      const session = sessions[sessionIdx];
+      alert(`Session ${sessionIdx + 1}\n\nDate: ${new Date(session.timestamp).toLocaleString()}\nDuration: ${Math.round(session.durationMs / 1000)}s\n\nDominants:\n• Locus: ${session.dominants.axis1}\n• Contribution: ${session.dominants.axis2}\n• Radius: ${session.dominants.axis3}`);
+    }
+
+    function clearSessionHistory() {
+      if (confirm('Are you sure? This will delete all saved sessions.')) {
+        ReflectionEngine.clearSessions();
+        showSessionHistory();
+      }
+    }
+
+    // Add history button listener
+    document.getElementById('historyBtn')?.addEventListener('click', showSessionHistory);
+
+    init();
+  </script>
+</body>
+</html>

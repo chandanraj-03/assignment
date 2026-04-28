@@ -125,8 +125,8 @@ Each transcript shows:
 /
 ├── tree/
 │   ├── reflection-tree.json        ← Part A: Tree data (47 nodes)
-│   ├── tree-diagram.drawio         ← Editable draw.io format
-│   └── tree-diagram.md             ← Visual diagram (Mermaid)
+│   └── tree-diagram.drawio         ← Editable draw.io format
+│ 
 ├── agent/                           ← Part B: Working implementation
 │   ├── index.html
 │   ├── engine.js
@@ -153,10 +153,6 @@ Each transcript shows:
 | Axes covered | 3 | 3 (Locus, Contribution, Radius) | ✅ |
 | Options per question | 3-5 | 3-5 | ✅ |
 | Summary nodes | 1+ | 3 | ✅ |
-| Write-up length | ≤3 pages | ~2.5 pages | ✅ |
-| Write-up sections | 4 required | 4 delivered | ✅ |
-| Tree diagram | Required | ✅ Mermaid + draw.io | ✅ |
-
 ### Part B Requirements — All Met ✅
 
 | Requirement | Status |
@@ -214,10 +210,3 @@ The tree demonstrates core BA/DS skills at DT:
 
 4. **To understand the design**: Read `write-up.md` for the reasoning behind each choice.
 
-5. **To verify branching logic**: Compare `transcripts/persona-1-transcript.md` and `transcripts/persona-2-transcript.md` to see how different answers produce different paths and reflections.
-
----
-
-**Version**: 1.0.0  
-**Submission Date**: April 28, 2026  
-**Status**: Complete (Part A + Part B Bonus)
